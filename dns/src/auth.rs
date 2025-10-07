@@ -1,4 +1,4 @@
-use gurtlib::prelude::*;
+use ginpalib::prelude::*;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation, Algorithm};
 use serde::{Deserialize, Serialize};
 use bcrypt::{hash, verify, DEFAULT_COST};
@@ -78,18 +78,18 @@ pub async fn jwt_middleware_gurt(ctx: &ServerContext, jwt_secret: &str) -> Resul
         .or_else(|| ctx.header("Authorization"))
         .ok_or_else(|| {
             log::warn!("JWT middleware failed: Missing Authorization header in {:?}", start_time.elapsed());
-            GurtError::invalid_message("Missing Authorization header")
+            GinpaError::invalid_message("Missing Authorization header")
         })?;
 
     if !auth_header.starts_with("Bearer ") {
         log::warn!("JWT middleware failed: Invalid header format in {:?}", start_time.elapsed());
-        return Err(GurtError::invalid_message("Invalid Authorization header format"));
+        return Err(GinpaError::invalid_message("Invalid Authorization header format"));
     }
 
     let token = &auth_header[7..]; // Remove "Bearer " prefix
     
     let result = validate_jwt(token, jwt_secret)
-        .map_err(|e| GurtError::invalid_message(format!("Invalid JWT token: {}", e)));
+        .map_err(|e| GinpaError::invalid_message(format!("Invalid JWT token: {}", e)));
         
     match &result {
         Ok(_) => log::info!("JWT middleware completed successfully in {:?}", start_time.elapsed()),

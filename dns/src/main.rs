@@ -1,5 +1,5 @@
 mod config;
-mod gurt_server;
+mod ginpa_server;
 mod auth;
 mod discord_bot;
 mod crypto;
@@ -46,7 +46,7 @@ async fn main() {
 
     match &cli.command {
         Commands::Start => {
-            if let Err(err) = gurt_server::start(cli).await {
+            if let Err(err) = ginpa_server::start(cli).await {
                 log::error!("Failed to start server: {err}")
             }
         }

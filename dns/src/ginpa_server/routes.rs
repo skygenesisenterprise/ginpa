@@ -2,7 +2,7 @@ use super::{models::*, AppState};
 use crate::auth::Claims;
 use crate::discord_bot::{send_domain_approval_request, DomainRegistration};
 use base64::{engine::general_purpose, Engine as _};
-use gurtlib::prelude::*;
+use ginpalib::prelude::*;
 use rand::{rngs::OsRng, Rng};
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -28,7 +28,7 @@ pub(crate) async fn index(ctx: &ServerContext, _app_state: AppState) -> Result<G
     let hostname = host_header.split(':').next().unwrap_or(host_header);
     
     let current_dir = std::env::current_dir()
-        .map_err(|_| GurtError::invalid_message("Failed to get current directory"))?;
+        .map_err(|_| GinpaError::invalid_message("Failed to get current directory"))?;
     
     let (frontend_dir, file_name) = if hostname == "search.web" {
         (current_dir.join("search-engine").join("frontend"), "search.html")
@@ -503,13 +503,13 @@ pub(crate) async fn create_domain_record(
     .bind(claims.user_id)
     .fetch_optional(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let domain = match domain {
         Some(d) => d,
         None => {
             return Ok(
-                GurtResponse::not_found().with_string_body("Domain not found or access denied")
+                GinpaResponse::not_found().with_string_body("Domain not found or access denied")
             )
         }
     };

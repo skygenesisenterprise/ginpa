@@ -1,13 +1,13 @@
 use super::{models::*, AppState};
 use crate::auth::*;
-use gurtlib::prelude::*;
-use gurtlib::GurtStatusCode;
+use ginpalib::prelude::*;
+use ginpalib::GurtStatusCode;
 use sqlx::Row;
 use chrono::Utc;
 
 pub(crate) async fn register(ctx: &ServerContext, app_state: AppState) -> Result<GurtResponse> {
     let user: RegisterRequest = serde_json::from_slice(ctx.body())
-        .map_err(|_| GurtError::invalid_message("Invalid JSON"))?;
+        .map_err(|_| GinpaError::invalid_message("Invalid JSON"))?;
 
     let registrations = 3; // New users get 3 registrations by default
 
@@ -15,7 +15,7 @@ pub(crate) async fn register(ctx: &ServerContext, app_state: AppState) -> Result
     let password_hash = match hash_password(&user.password) {
         Ok(hash) => hash,
         Err(_) => {
-            return Ok(GurtResponse::internal_server_error().with_json_body(&Error {
+            return Ok(GinpaResponse::internal_server_error().with_json_body(&Error {
                 msg: "Failed to hash password",
                 error: "HASH_ERROR".into(),
             })?);
@@ -50,10 +50,10 @@ pub(crate) async fn register(ctx: &ServerContext, app_state: AppState) -> Result
                             created_at: Utc::now(),
                         },
                     };
-                    Ok(GurtResponse::ok().with_json_body(&response)?)
+                    Ok(GinpaResponse::ok().with_json_body(&response)?)
                 }
                 Err(_) => {
-                    Ok(GurtResponse::internal_server_error().with_json_body(&Error {
+                    Ok(GinpaResponse::internal_server_error().with_json_body(&Error {
                         msg: "Failed to generate token",
                         error: "JWT_ERROR".into(),
                     })?)
@@ -62,12 +62,12 @@ pub(crate) async fn register(ctx: &ServerContext, app_state: AppState) -> Result
         }
         Err(e) => {
             if e.to_string().contains("duplicate key") {
-                Ok(GurtResponse::bad_request().with_json_body(&Error {
+                Ok(GinpaResponse::bad_request().with_json_body(&Error {
                     msg: "Username already exists",
                     error: "DUPLICATE_USERNAME".into(),
                 })?)
             } else {
-                Ok(GurtResponse::internal_server_error().with_json_body(&Error {
+                Ok(GinpaResponse::internal_server_error().with_json_body(&Error {
                     msg: "Failed to create user",
                     error: e.to_string(),
                 })?)
@@ -82,7 +82,7 @@ pub(crate) async fn login(ctx: &ServerContext, app_state: AppState) -> Result<Gu
     let login_req: LoginRequest = serde_json::from_slice(body_bytes)
         .map_err(|e| {
             log::error!("JSON parse error: {}", e);
-            GurtError::invalid_message("Invalid JSON")
+            GinpaError::invalid_message("Invalid JSON")
         })?;
 
     // Find user
@@ -111,10 +111,10 @@ pub(crate) async fn login(ctx: &ServerContext, app_state: AppState) -> Result<Gu
                                     created_at: user.created_at,
                                 },
                             };
-                            Ok(GurtResponse::ok().with_json_body(&response)?)
+                            Ok(GinpaResponse::ok().with_json_body(&response)?)
                         }
                         Err(_) => {
-                            Ok(GurtResponse::internal_server_error().with_json_body(&Error {
+                            Ok(GinpaResponse::internal_server_error().with_json_body(&Error {
                                 msg: "Failed to generate token",
                                 error: "JWT_ERROR".into(),
                             })?)
@@ -122,13 +122,13 @@ pub(crate) async fn login(ctx: &ServerContext, app_state: AppState) -> Result<Gu
                     }
                 }
                 Ok(false) => {
-                    Ok(GurtResponse::new(GurtStatusCode::Unauthorized).with_json_body(&Error {
+                    Ok(GinpaResponse::new(GurtStatusCode::Unauthorized).with_json_body(&Error {
                         msg: "Invalid credentials",
                         error: "INVALID_CREDENTIALS".into(),
                     })?)
                 }
                 Err(_) => {
-                    Ok(GurtResponse::internal_server_error().with_json_body(&Error {
+                    Ok(GinpaResponse::internal_server_error().with_json_body(&Error {
                         msg: "Password verification failed",
                         error: "PASSWORD_ERROR".into(),
                     })?)
@@ -136,13 +136,13 @@ pub(crate) async fn login(ctx: &ServerContext, app_state: AppState) -> Result<Gu
             }
         }
         Ok(None) => {
-            Ok(GurtResponse::new(GurtStatusCode::Unauthorized).with_json_body(&Error {
+            Ok(GinpaResponse::new(GurtStatusCode::Unauthorized).with_json_body(&Error {
                 msg: "Invalid credentials",
                 error: "INVALID_CREDENTIALS".into(),
             })?)
         }
         Err(_) => {
-            Ok(GurtResponse::internal_server_error().with_json_body(&Error {
+            Ok(GinpaResponse::internal_server_error().with_json_body(&Error {
                 msg: "Database error",
                 error: "DATABASE_ERROR".into(),
             })?)
@@ -167,16 +167,16 @@ pub(crate) async fn get_user_info(_ctx: &ServerContext, app_state: AppState, cla
                 domain_invite_codes: user.domain_invite_codes,
                 created_at: user.created_at,
             };
-            Ok(GurtResponse::ok().with_json_body(&user_info)?)
+            Ok(GinpaResponse::ok().with_json_body(&user_info)?)
         }
         Ok(None) => {
-            Ok(GurtResponse::not_found().with_json_body(&Error {
+            Ok(GinpaResponse::not_found().with_json_body(&Error {
                 msg: "User not found",
                 error: "USER_NOT_FOUND".into(),
             })?)
         }
         Err(_) => {
-            Ok(GurtResponse::internal_server_error().with_json_body(&Error {
+            Ok(GinpaResponse::internal_server_error().with_json_body(&Error {
                 msg: "Database error",
                 error: "DATABASE_ERROR".into(),
             })?)
@@ -198,17 +198,17 @@ pub(crate) async fn create_invite(_ctx: &ServerContext, app_state: AppState, cla
     };
 
     let mut tx = app_state.db.begin().await
-        .map_err(|_| GurtError::invalid_message("Database error"))?;
+        .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let affected_rows = sqlx::query("UPDATE users SET registrations_remaining = registrations_remaining - 1 WHERE id = $1 AND registrations_remaining > 0")
         .bind(claims.user_id)
         .execute(&mut *tx)
         .await
-        .map_err(|_| GurtError::invalid_message("Database error"))?
+        .map_err(|_| GinpaError::invalid_message("Database error"))?
         .rows_affected();
 
     if affected_rows == 0 {
-        return Ok(GurtResponse::bad_request().with_json_body(&Error {
+        return Ok(GinpaResponse::bad_request().with_json_body(&Error {
             msg: "No registrations remaining to create invite",
             error: "INSUFFICIENT_REGISTRATIONS".into(),
         })?);
@@ -220,17 +220,17 @@ pub(crate) async fn create_invite(_ctx: &ServerContext, app_state: AppState, cla
         .bind(Utc::now())
         .execute(&mut *tx)
         .await
-        .map_err(|_| GurtError::invalid_message("Database error"))?;
+        .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     match tx.commit().await {
         Ok(_) => {
             let response = serde_json::json!({
                 "invite_code": invite_code
             });
-            Ok(GurtResponse::ok().with_json_body(&response)?)
+            Ok(GinpaResponse::ok().with_json_body(&response)?)
         }
         Err(_) => {
-            Ok(GurtResponse::internal_server_error().with_json_body(&Error {
+            Ok(GinpaResponse::internal_server_error().with_json_body(&Error {
                 msg: "Failed to create invite",
                 error: "DATABASE_ERROR".into(),
             })?)
@@ -240,10 +240,10 @@ pub(crate) async fn create_invite(_ctx: &ServerContext, app_state: AppState, cla
 
 pub(crate) async fn redeem_invite(ctx: &ServerContext, app_state: AppState, claims: Claims) -> Result<GurtResponse> {
     let request: serde_json::Value = serde_json::from_slice(ctx.body())
-        .map_err(|_| GurtError::invalid_message("Invalid JSON"))?;
+        .map_err(|_| GinpaError::invalid_message("Invalid JSON"))?;
 
     let invite_code = request["invite_code"].as_str()
-        .ok_or(GurtError::invalid_message("Missing invite_code"))?;
+        .ok_or(GinpaError::invalid_message("Missing invite_code"))?;
 
     // Check if invite code exists and is not used
     let invite_result = sqlx::query_as::<_, InviteCode>(
@@ -257,7 +257,7 @@ pub(crate) async fn redeem_invite(ctx: &ServerContext, app_state: AppState, clai
         Ok(Some(invite)) => {
             // Mark invite as used and give user 3 additional registrations
             let mut tx = app_state.db.begin().await
-                .map_err(|_| GurtError::invalid_message("Database error"))?;
+                .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
             sqlx::query("UPDATE invite_codes SET used_by = $1, used_at = $2 WHERE id = $3")
                 .bind(claims.user_id)
@@ -265,30 +265,30 @@ pub(crate) async fn redeem_invite(ctx: &ServerContext, app_state: AppState, clai
                 .bind(invite.id)
                 .execute(&mut *tx)
                 .await
-                .map_err(|_| GurtError::invalid_message("Database error"))?;
+                .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
             sqlx::query("UPDATE users SET registrations_remaining = registrations_remaining + 1 WHERE id = $1")
                 .bind(claims.user_id)
                 .execute(&mut *tx)
                 .await
-                .map_err(|_| GurtError::invalid_message("Database error"))?;
+                .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
             tx.commit().await
-                .map_err(|_| GurtError::invalid_message("Database error"))?;
+                .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
             let response = serde_json::json!({
                 "registrations_added": 1
             });
-            Ok(GurtResponse::ok().with_json_body(&response)?)
+            Ok(GinpaResponse::ok().with_json_body(&response)?)
         }
         Ok(None) => {
-            Ok(GurtResponse::bad_request().with_json_body(&Error {
+            Ok(GinpaResponse::bad_request().with_json_body(&Error {
                 msg: "Invalid or already used invite code",
                 error: "INVALID_INVITE".into(),
             })?)
         }
         Err(_) => {
-            Ok(GurtResponse::internal_server_error().with_json_body(&Error {
+            Ok(GinpaResponse::internal_server_error().with_json_body(&Error {
                 msg: "Database error",
                 error: "DATABASE_ERROR".into(),
             })?)
@@ -311,17 +311,17 @@ pub(crate) async fn create_domain_invite(_ctx: &ServerContext, app_state: AppSta
 
     // Insert domain invite code and decrease user's count
     let mut tx = app_state.db.begin().await
-        .map_err(|_| GurtError::invalid_message("Database error"))?;
+        .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let affected_rows = sqlx::query("UPDATE users SET domain_invite_codes = domain_invite_codes - 1 WHERE id = $1 AND domain_invite_codes > 0")
         .bind(claims.user_id)
         .execute(&mut *tx)
         .await
-        .map_err(|_| GurtError::invalid_message("Database error"))?
+        .map_err(|_| GinpaError::invalid_message("Database error"))?
         .rows_affected();
 
     if affected_rows == 0 {
-        return Ok(GurtResponse::bad_request().with_json_body(&Error {
+        return Ok(GinpaResponse::bad_request().with_json_body(&Error {
             msg: "No domain invite codes remaining",
             error: "NO_INVITES_REMAINING".into(),
         })?);
@@ -335,23 +335,23 @@ pub(crate) async fn create_domain_invite(_ctx: &ServerContext, app_state: AppSta
     .bind(Utc::now())
     .execute(&mut *tx)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     tx.commit().await
-        .map_err(|_| GurtError::invalid_message("Database error"))?;
+        .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let response = serde_json::json!({
         "domain_invite_code": invite_code
     });
-    Ok(GurtResponse::ok().with_json_body(&response)?)
+    Ok(GinpaResponse::ok().with_json_body(&response)?)
 }
 
 pub(crate) async fn redeem_domain_invite(ctx: &ServerContext, app_state: AppState, claims: Claims) -> Result<GurtResponse> {
     let request: serde_json::Value = serde_json::from_slice(ctx.body())
-        .map_err(|_| GurtError::invalid_message("Invalid JSON"))?;
+        .map_err(|_| GinpaError::invalid_message("Invalid JSON"))?;
 
     let invite_code = request["domain_invite_code"].as_str()
-        .ok_or(GurtError::invalid_message("Missing domain_invite_code"))?;
+        .ok_or(GinpaError::invalid_message("Missing domain_invite_code"))?;
 
     // Check if domain invite code exists and is not used
     let invite_result = sqlx::query_as::<_, DomainInviteCode>(
@@ -365,7 +365,7 @@ pub(crate) async fn redeem_domain_invite(ctx: &ServerContext, app_state: AppStat
         Ok(Some(invite)) => {
             // Mark invite as used and give user 1 additional domain invite code
             let mut tx = app_state.db.begin().await
-                .map_err(|_| GurtError::invalid_message("Database error"))?;
+                .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
             sqlx::query("UPDATE domain_invite_codes SET used_by = $1, used_at = $2 WHERE id = $3")
                 .bind(claims.user_id)
@@ -373,30 +373,30 @@ pub(crate) async fn redeem_domain_invite(ctx: &ServerContext, app_state: AppStat
                 .bind(invite.id)
                 .execute(&mut *tx)
                 .await
-                .map_err(|_| GurtError::invalid_message("Database error"))?;
+                .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
             sqlx::query("UPDATE users SET domain_invite_codes = domain_invite_codes + 1 WHERE id = $1")
                 .bind(claims.user_id)
                 .execute(&mut *tx)
                 .await
-                .map_err(|_| GurtError::invalid_message("Database error"))?;
+                .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
             tx.commit().await
-                .map_err(|_| GurtError::invalid_message("Database error"))?;
+                .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
             let response = serde_json::json!({
                 "domain_invite_codes_added": 1
             });
-            Ok(GurtResponse::ok().with_json_body(&response)?)
+            Ok(GinpaResponse::ok().with_json_body(&response)?)
         }
         Ok(None) => {
-            Ok(GurtResponse::bad_request().with_json_body(&Error {
+            Ok(GinpaResponse::bad_request().with_json_body(&Error {
                 msg: "Invalid or already used domain invite code",
                 error: "INVALID_DOMAIN_INVITE".into(),
             })?)
         }
         Err(_) => {
-            Ok(GurtResponse::internal_server_error().with_json_body(&Error {
+            Ok(GinpaResponse::internal_server_error().with_json_body(&Error {
                 msg: "Database error",
                 error: "DATABASE_ERROR".into(),
             })?)
