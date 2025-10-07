@@ -40,7 +40,7 @@ pub(crate) async fn index(ctx: &ServerContext, _app_state: AppState) -> Result<G
     
     match tokio::fs::read_to_string(&index_path).await {
         Ok(content) => {
-            Ok(GurtResponse::ok()
+            Ok(GinpaResponse::ok()
                 .with_header("Content-Type", "text/html")
                 .with_string_body(&content))
         }
@@ -49,7 +49,7 @@ pub(crate) async fn index(ctx: &ServerContext, _app_state: AppState) -> Result<G
                 "GurtDNS v{}!\n\nThe available endpoints are:\n\n - [GET] /domains\n - [GET] /domain/{{name}}/{{tld}}\n - [POST] /domain\n - [PUT] /domain/{{key}}\n - [DELETE] /domain/{{key}}\n - [GET] /tlds\n\nRatelimits are as follows: 5 requests per 10 minutes on `[POST] /domain`.\n\nCode link: https://github.com/outpoot/gurted",
                 env!("CARGO_PKG_VERSION")
             );
-            Ok(GurtResponse::ok().with_string_body(&body))
+            Ok(GinpaResponse::ok().with_string_body(&body))
         }
     }
 }
@@ -62,7 +62,7 @@ pub(crate) async fn create_logic(domain: Domain, user_id: i32, app: &AppState) -
         || domain.name.starts_with('-')
         || domain.name.ends_with('-')
     {
-        return Err(GurtError::invalid_message(
+        return Err(GinpaError::invalid_message(
             "Invalid name, non-existent TLD, or name too long (24 chars).",
         ));
     }
@@ -73,7 +73,7 @@ pub(crate) async fn create_logic(domain: Domain, user_id: i32, app: &AppState) -
         .iter()
         .any(|word| domain.name.contains(word))
     {
-        return Err(GurtError::invalid_message(
+        return Err(GinpaError::invalid_message(
             "The given domain name is offensive.",
         ));
     }
@@ -84,17 +84,17 @@ pub(crate) async fn create_logic(domain: Domain, user_id: i32, app: &AppState) -
             .bind(&domain.tld)
             .fetch_one(&app.db)
             .await
-            .map_err(|_| GurtError::invalid_message("Database error"))?;
+            .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     if existing_count > 0 {
-        return Err(GurtError::invalid_message("Domain already exists"));
+        return Err(GinpaError::invalid_message("Domain already exists"));
     }
 
     let user: (String,) = sqlx::query_as("SELECT username FROM users WHERE id = $1")
         .bind(user_id)
         .fetch_one(&app.db)
         .await
-        .map_err(|_| GurtError::invalid_message("User not found"))?;
+        .map_err(|_| GinpaError::invalid_message("User not found"))?;
 
     let username = user.0;
 
@@ -106,7 +106,7 @@ pub(crate) async fn create_logic(domain: Domain, user_id: i32, app: &AppState) -
     .bind(user_id)
     .fetch_one(&app.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Failed to create domain"))?;
+    .map_err(|_| GinpaError::invalid_message("Failed to create domain"))?;
 
     let domain_id = domain_row.0;
 
@@ -116,7 +116,7 @@ pub(crate) async fn create_logic(domain: Domain, user_id: i32, app: &AppState) -
     .bind(user_id)
     .execute(&app.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Failed to update user registrations"))?
+    .map_err(|_| GinpaError::invalid_message("Failed to update user registrations"))?
     .rows_affected();
 
     if affected_rows == 0 {
@@ -124,8 +124,8 @@ pub(crate) async fn create_logic(domain: Domain, user_id: i32, app: &AppState) -
             .bind(domain_id)
             .execute(&app.db)
             .await
-            .map_err(|_| GurtError::invalid_message("Database cleanup error"))?;
-        return Err(GurtError::invalid_message("No registrations remaining"));
+            .map_err(|_| GinpaError::invalid_message("Database cleanup error"))?;
+        return Err(GinpaError::invalid_message("No registrations remaining"));
     }
 
     if !app.config.discord.bot_token.is_empty() && app.config.discord.channel_id != 0 {
@@ -156,13 +156,13 @@ pub(crate) async fn create_domain(
     ctx: &ServerContext,
     app_state: AppState,
     claims: Claims,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     let domain: Domain = serde_json::from_slice(ctx.body())
-        .map_err(|_| GurtError::invalid_message("Invalid JSON"))?;
+        .map_err(|_| GinpaError::invalid_message("Invalid JSON"))?;
 
     match create_logic(domain.clone(), claims.user_id, &app_state).await {
-        Ok(created_domain) => Ok(GurtResponse::ok().with_json_body(&created_domain)?),
-        Err(e) => Ok(GurtResponse::bad_request().with_json_body(&Error {
+        Ok(created_domain) => Ok(GinpaResponse::ok().with_json_body(&created_domain)?),
+        Err(e) => Ok(GinpaResponse::bad_request().with_json_body(&Error {
             msg: "Failed to create domain",
             error: e.to_string(),
         })?),
@@ -173,10 +173,10 @@ pub(crate) async fn get_domain(
     ctx: &ServerContext,
     app_state: AppState,
     claims: Claims,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     let path_parts: Vec<&str> = ctx.path().split('/').collect();
     if path_parts.len() < 3 {
-        return Ok(GurtResponse::bad_request()
+        return Ok(GinpaResponse::bad_request()
             .with_string_body("Invalid path format. Expected /domain/{domainName}"));
     }
 
@@ -184,7 +184,7 @@ pub(crate) async fn get_domain(
 
     let domain_parts: Vec<&str> = domain_name.split('.').collect();
     if domain_parts.len() < 2 {
-        return Ok(GurtResponse::bad_request()
+        return Ok(GinpaResponse::bad_request()
             .with_string_body("Invalid domain format. Expected name.tld"));
     }
 
@@ -199,7 +199,7 @@ pub(crate) async fn get_domain(
     .bind(claims.user_id)
     .fetch_optional(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     match domain {
         Some(domain) => {
@@ -208,9 +208,9 @@ pub(crate) async fn get_domain(
                 tld: domain.tld,
                 status: domain.status,
             };
-            Ok(GurtResponse::ok().with_json_body(&response_domain)?)
+            Ok(GinpaResponse::ok().with_json_body(&response_domain)?)
         }
-        None => Ok(GurtResponse::not_found().with_string_body("Domain not found")),
+        None => Ok(GinpaResponse::not_found().with_string_body("Domain not found")),
     }
 }
 
@@ -245,7 +245,7 @@ pub(crate) async fn get_domains(ctx: &ServerContext, app_state: AppState) -> Res
     .bind(offset as i64)
     .fetch_all(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let response_domains: Vec<ResponseDomain> = domains
         .into_iter()
@@ -262,11 +262,11 @@ pub(crate) async fn get_domains(ctx: &ServerContext, app_state: AppState) -> Res
         limit: page_size,
     };
 
-    Ok(GurtResponse::ok().with_json_body(&response)?)
+    Ok(GinpaResponse::ok().with_json_body(&response)?)
 }
 
 pub(crate) async fn get_tlds(app_state: AppState) -> Result<GurtResponse> {
-    Ok(GurtResponse::ok().with_json_body(&app_state.config.tld_list())?)
+    Ok(GinpaResponse::ok().with_json_body(&app_state.config.tld_list())?)
 }
 
 pub(crate) async fn check_domain(ctx: &ServerContext, app_state: AppState) -> Result<GurtResponse> {
@@ -275,16 +275,16 @@ pub(crate) async fn check_domain(ctx: &ServerContext, app_state: AppState) -> Re
         let query_string = &path[query_start + 1..];
         parse_query_string(query_string)
     } else {
-        return Ok(GurtResponse::bad_request()
+        return Ok(GinpaResponse::bad_request()
             .with_string_body("Missing query parameters. Expected ?name=<name>&tld=<tld>"));
     };
 
     let name = query_params
         .get("name")
-        .ok_or_else(|| GurtError::invalid_message("Missing 'name' parameter"))?;
+        .ok_or_else(|| GinpaError::invalid_message("Missing 'name' parameter"))?;
     let tld = query_params
         .get("tld")
-        .ok_or_else(|| GurtError::invalid_message("Missing 'tld' parameter"))?;
+        .ok_or_else(|| GinpaError::invalid_message("Missing 'tld' parameter"))?;
 
     let domain: Option<Domain> = sqlx::query_as::<_, Domain>(
         "SELECT id, name, tld, ip, user_id, status, denial_reason, created_at FROM domains WHERE name = $1 AND tld = $2"
@@ -293,22 +293,22 @@ pub(crate) async fn check_domain(ctx: &ServerContext, app_state: AppState) -> Re
     .bind(tld)
     .fetch_optional(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let domain_list = DomainList {
         domain: format!("{}.{}", name, tld),
         taken: domain.is_some(),
     };
 
-    Ok(GurtResponse::ok().with_json_body(&domain_list)?)
+    Ok(GinpaResponse::ok().with_json_body(&domain_list)?)
 }
 
 pub(crate) async fn update_domain(
     _ctx: &ServerContext,
     _app_state: AppState,
     _claims: Claims,
-) -> Result<GurtResponse> {
-    return Ok(GurtResponse::bad_request()
+) -> Result<GinpaResponse> {
+    return Ok(GinpaResponse::bad_request()
         .with_string_body("Domain updates are no longer supported. Use DNS records instead."));
 }
 
@@ -316,10 +316,10 @@ pub(crate) async fn delete_domain(
     ctx: &ServerContext,
     app_state: AppState,
     claims: Claims,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     let path_parts: Vec<&str> = ctx.path().split('/').collect();
     if path_parts.len() < 4 {
-        return Ok(GurtResponse::bad_request()
+        return Ok(GinpaResponse::bad_request()
             .with_string_body("Invalid path format. Expected /domain/{name}/{tld}"));
     }
 
@@ -335,10 +335,10 @@ pub(crate) async fn delete_domain(
     .bind(claims.user_id)
     .fetch_optional(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     if domain.is_none() {
-        return Ok(GurtResponse::not_found().with_string_body("Domain not found or access denied"));
+        return Ok(GinpaResponse::not_found().with_string_body("Domain not found or access denied"));
     }
 
     sqlx::query("DELETE FROM domains WHERE name = $1 AND tld = $2 AND user_id = $3")
@@ -347,16 +347,16 @@ pub(crate) async fn delete_domain(
         .bind(claims.user_id)
         .execute(&app_state.db)
         .await
-        .map_err(|_| GurtError::invalid_message("Failed to delete domain"))?;
+        .map_err(|_| GinpaError::invalid_message("Failed to delete domain"))?;
 
-    Ok(GurtResponse::ok().with_string_body("Domain deleted successfully"))
+    Ok(GinpaResponse::ok().with_string_body("Domain deleted successfully"))
 }
 
 pub(crate) async fn get_user_domains(
     ctx: &ServerContext,
     app_state: AppState,
     claims: Claims,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     // Parse pagination from query parameters
     let path = ctx.path();
     let query_params = if let Some(query_start) = path.find('?') {
@@ -388,7 +388,7 @@ pub(crate) async fn get_user_domains(
     .bind(offset as i64)
     .fetch_all(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let response_domains: Vec<UserDomain> = domains
         .into_iter()
@@ -406,17 +406,17 @@ pub(crate) async fn get_user_domains(
         limit: page_size,
     };
 
-    Ok(GurtResponse::ok().with_json_body(&response)?)
+    Ok(GinpaResponse::ok().with_json_body(&response)?)
 }
 
 pub(crate) async fn get_domain_records(
     ctx: &ServerContext,
     app_state: AppState,
     claims: Claims,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     let path_parts: Vec<&str> = ctx.path().split('/').collect();
     if path_parts.len() < 4 {
-        return Ok(GurtResponse::bad_request()
+        return Ok(GinpaResponse::bad_request()
             .with_string_body("Invalid path format. Expected /domain/{domainName}/records"));
     }
 
@@ -424,7 +424,7 @@ pub(crate) async fn get_domain_records(
 
     let domain_parts: Vec<&str> = domain_name.split('.').collect();
     if domain_parts.len() < 2 {
-        return Ok(GurtResponse::bad_request()
+        return Ok(GinpaResponse::bad_request()
             .with_string_body("Invalid domain format. Expected name.tld"));
     }
 
@@ -439,13 +439,13 @@ pub(crate) async fn get_domain_records(
     .bind(claims.user_id)
     .fetch_optional(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let domain = match domain {
         Some(d) => d,
         None => {
             return Ok(
-                GurtResponse::not_found().with_string_body("Domain not found or access denied")
+                GinpaResponse::not_found().with_string_body("Domain not found or access denied")
             )
         }
     };
@@ -456,7 +456,7 @@ pub(crate) async fn get_domain_records(
     .bind(domain.id.unwrap())
     .fetch_all(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let response_records: Vec<ResponseDnsRecord> = records
         .into_iter()
@@ -470,17 +470,17 @@ pub(crate) async fn get_domain_records(
         })
         .collect();
 
-    Ok(GurtResponse::ok().with_json_body(&response_records)?)
+    Ok(GinpaResponse::ok().with_json_body(&response_records)?)
 }
 
 pub(crate) async fn create_domain_record(
     ctx: &ServerContext,
     app_state: AppState,
     claims: Claims,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     let path_parts: Vec<&str> = ctx.path().split('/').collect();
     if path_parts.len() < 4 {
-        return Ok(GurtResponse::bad_request()
+        return Ok(GinpaResponse::bad_request()
             .with_string_body("Invalid path format. Expected /domain/{domainName}/records"));
     }
 
@@ -488,7 +488,7 @@ pub(crate) async fn create_domain_record(
 
     let domain_parts: Vec<&str> = domain_name.split('.').collect();
     if domain_parts.len() < 2 {
-        return Ok(GurtResponse::bad_request()
+        return Ok(GinpaResponse::bad_request()
             .with_string_body("Invalid domain format. Expected name.tld"));
     }
 
@@ -521,16 +521,16 @@ pub(crate) async fn create_domain_record(
 
         serde_json::from_slice(body_bytes).map_err(|e| {
             log::error!("JSON parsing error: {} for body: {}", e, body_str);
-            GurtError::invalid_message("Invalid JSON")
+            GinpaError::invalid_message("Invalid JSON")
         })?
     };
 
     if record_data.record_type.is_empty() {
-        return Ok(GurtResponse::bad_request().with_string_body("Record type is required"));
+        return Ok(GinpaResponse::bad_request().with_string_body("Record type is required"));
     }
 
     if !VALID_DNS_RECORD_TYPES.contains(&record_data.record_type.as_str()) {
-        return Ok(GurtResponse::bad_request().with_string_body(
+        return Ok(GinpaResponse::bad_request().with_string_body(
             "Invalid record type. Only A, AAAA, CNAME, and TXT records are supported.",
         ));
     }
@@ -541,19 +541,19 @@ pub(crate) async fn create_domain_record(
     match record_data.record_type.as_str() {
         "A" => {
             if !record_data.value.parse::<std::net::Ipv4Addr>().is_ok() {
-                return Ok(GurtResponse::bad_request()
+                return Ok(GinpaResponse::bad_request()
                     .with_string_body("Invalid IPv4 address for A record"));
             }
         }
         "AAAA" => {
             if !record_data.value.parse::<std::net::Ipv6Addr>().is_ok() {
-                return Ok(GurtResponse::bad_request()
+                return Ok(GinpaResponse::bad_request()
                     .with_string_body("Invalid IPv6 address for AAAA record"));
             }
         }
         "CNAME" => {
             if record_data.value.is_empty() || !record_data.value.contains('.') {
-                return Ok(GurtResponse::bad_request()
+                return Ok(GinpaResponse::bad_request()
                     .with_string_body("CNAME records must contain a valid domain name"));
             }
         }
@@ -561,7 +561,7 @@ pub(crate) async fn create_domain_record(
             // TXT records can contain any text
         }
         _ => {
-            return Ok(GurtResponse::bad_request().with_string_body("Invalid record type"));
+            return Ok(GinpaResponse::bad_request().with_string_body("Invalid record type"));
         }
     }
 
@@ -578,7 +578,7 @@ pub(crate) async fn create_domain_record(
     .await
     .map_err(|e| {
         log::error!("Failed to create DNS record: {}", e);
-        GurtError::invalid_message("Failed to create DNS record")
+        GinpaError::invalid_message("Failed to create DNS record")
     })?;
 
     let response_record = ResponseDnsRecord {
@@ -590,17 +590,17 @@ pub(crate) async fn create_domain_record(
         priority: record_data.priority,
     };
 
-    Ok(GurtResponse::ok().with_json_body(&response_record)?)
+    Ok(GinpaResponse::ok().with_json_body(&response_record)?)
 }
 
 pub(crate) async fn delete_domain_record(
     ctx: &ServerContext,
     app_state: AppState,
     claims: Claims,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     let path_parts: Vec<&str> = ctx.path().split('/').collect();
     if path_parts.len() < 5 {
-        return Ok(GurtResponse::bad_request().with_string_body(
+        return Ok(GinpaResponse::bad_request().with_string_body(
             "Invalid path format. Expected /domain/{domainName}/records/{recordId}",
         ));
     }
@@ -610,11 +610,11 @@ pub(crate) async fn delete_domain_record(
 
     let record_id: i32 = record_id_str
         .parse()
-        .map_err(|_| GurtError::invalid_message("Invalid record ID"))?;
+        .map_err(|_| GinpaError::invalid_message("Invalid record ID"))?;
 
     let domain_parts: Vec<&str> = domain_name.split('.').collect();
     if domain_parts.len() < 2 {
-        return Ok(GurtResponse::bad_request()
+        return Ok(GinpaResponse::bad_request()
             .with_string_body("Invalid domain format. Expected name.tld"));
     }
 
@@ -629,13 +629,13 @@ pub(crate) async fn delete_domain_record(
     .bind(claims.user_id)
     .fetch_optional(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let domain = match domain {
         Some(d) => d,
         None => {
             return Ok(
-                GurtResponse::not_found().with_string_body("Domain not found or access denied")
+                GinpaResponse::not_found().with_string_body("Domain not found or access denied")
             )
         }
     };
@@ -645,29 +645,29 @@ pub(crate) async fn delete_domain_record(
         .bind(domain.id.unwrap())
         .execute(&app_state.db)
         .await
-        .map_err(|_| GurtError::invalid_message("Database error"))?
+        .map_err(|_| GinpaError::invalid_message("Database error"))?
         .rows_affected();
 
     if rows_affected == 0 {
-        return Ok(GurtResponse::not_found().with_string_body("DNS record not found"));
+        return Ok(GinpaResponse::not_found().with_string_body("DNS record not found"));
     }
 
-    Ok(GurtResponse::ok().with_string_body("DNS record deleted successfully"))
+    Ok(GinpaResponse::ok().with_string_body("DNS record deleted successfully"))
 }
 
 pub(crate) async fn resolve_domain(
     ctx: &ServerContext,
     app_state: AppState,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     let resolution_request: DnsResolutionRequest = serde_json::from_slice(ctx.body())
-        .map_err(|_| GurtError::invalid_message("Invalid JSON"))?;
+        .map_err(|_| GinpaError::invalid_message("Invalid JSON"))?;
 
     let full_domain = format!("{}.{}", resolution_request.name, resolution_request.tld);
 
     // Try to resolve with enhanced subdomain and delegation support
     match resolve_dns_with_delegation(&full_domain, &app_state).await {
-        Ok(response) => Ok(GurtResponse::ok().with_json_body(&response)?),
-        Err(_) => Ok(GurtResponse::not_found().with_json_body(&Error {
+        Ok(response) => Ok(GinpaResponse::ok().with_json_body(&response)?),
+        Err(_) => Ok(GinpaResponse::not_found().with_json_body(&Error {
             msg: "Domain not found",
             error: "Domain not found, not approved, or delegation failed".into(),
         })?),
@@ -681,7 +681,7 @@ async fn resolve_dns_with_delegation(
     // Parse the query domain
     let parts: Vec<&str> = query_name.split('.').collect();
     if parts.len() < 2 {
-        return Err(GurtError::invalid_message("Invalid domain format"));
+        return Err(GinpaError::invalid_message("Invalid domain format"));
     }
 
     let tld = parts.last().unwrap();
@@ -696,7 +696,7 @@ async fn resolve_dns_with_delegation(
         return Ok(response);
     }
 
-    Err(GurtError::invalid_message(
+    Err(GinpaError::invalid_message(
         "No matching records or delegation found",
     ))
 }
@@ -729,7 +729,7 @@ async fn try_exact_match(
         .bind(tld)
         .fetch_optional(&app_state.db)
         .await
-        .map_err(|_| GurtError::invalid_message("Database error"))?;
+        .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
         if let Some(domain) = domain {
             // Look for specific records for this subdomain
@@ -740,7 +740,7 @@ async fn try_exact_match(
             .bind(&subdomain)
             .fetch_all(&app_state.db)
             .await
-            .map_err(|_| GurtError::invalid_message("Database error"))?;
+            .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
             if !records.is_empty() {
                 let response_records: Vec<ResponseDnsRecord> = records
@@ -792,7 +792,7 @@ async fn try_delegation_match(
         .bind(tld)
         .fetch_optional(&app_state.db)
         .await
-        .map_err(|_| GurtError::invalid_message("Database error"))?;
+        .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
         if let Some(domain) = domain {
             // Look for NS records that match this subdomain or parent
@@ -804,7 +804,7 @@ async fn try_delegation_match(
             .bind("@")
             .fetch_all(&app_state.db)
             .await
-            .map_err(|_| GurtError::invalid_message("Database error"))?;
+            .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
             if !ns_records.is_empty() {
                 // Also look for glue records (A/AAAA records for the NS hosts)
@@ -823,7 +823,7 @@ async fn try_delegation_match(
                         .bind(ns_host)
                         .fetch_all(&app_state.db)
                         .await
-                        .map_err(|_| GurtError::invalid_message("Database error"))?;
+                        .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
                         all_records.extend(glue_records);
                     }
@@ -856,7 +856,7 @@ async fn try_delegation_match(
 pub(crate) async fn resolve_full_domain(
     ctx: &ServerContext,
     app_state: AppState,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     #[derive(serde::Deserialize)]
     struct FullDomainRequest {
         domain: String,
@@ -864,7 +864,7 @@ pub(crate) async fn resolve_full_domain(
     }
 
     let request: FullDomainRequest = serde_json::from_slice(ctx.body())
-        .map_err(|_| GurtError::invalid_message("Invalid JSON"))?;
+        .map_err(|_| GinpaError::invalid_message("Invalid JSON"))?;
 
     // Try to resolve with enhanced subdomain and delegation support
     match resolve_dns_with_delegation(&request.domain, &app_state).await {
@@ -873,9 +873,9 @@ pub(crate) async fn resolve_full_domain(
             if let Some(record_type) = request.record_type {
                 response.records.retain(|r| r.record_type == record_type);
             }
-            Ok(GurtResponse::ok().with_json_body(&response)?)
+            Ok(GinpaResponse::ok().with_json_body(&response)?)
         }
-        Err(_) => Ok(GurtResponse::not_found().with_json_body(&Error {
+        Err(_) => Ok(GinpaResponse::not_found().with_json_body(&Error {
             msg: "Domain not found",
             error: "Domain not found, not approved, or delegation failed".into(),
         })?),
@@ -886,17 +886,17 @@ pub(crate) async fn resolve_full_domain(
 pub(crate) async fn verify_domain_ownership(
     ctx: &ServerContext,
     app_state: AppState,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     let path_parts: Vec<&str> = ctx.path().split('/').collect();
     if path_parts.len() < 3 {
-        return Ok(GurtResponse::bad_request().with_string_body("Invalid path format"));
+        return Ok(GinpaResponse::bad_request().with_string_body("Invalid path format"));
     }
 
     let domain = path_parts[2];
 
     let domain_parts: Vec<&str> = domain.split('.').collect();
     if domain_parts.len() < 2 {
-        return Ok(GurtResponse::bad_request().with_string_body("Invalid domain format"));
+        return Ok(GinpaResponse::bad_request().with_string_body("Invalid domain format"));
     }
 
     let name = domain_parts[0];
@@ -909,11 +909,11 @@ pub(crate) async fn verify_domain_ownership(
     .bind(tld)
     .fetch_optional(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let exists = domain_record.is_some();
 
-    Ok(GurtResponse::ok().with_json_body(&serde_json::json!({
+    Ok(GinpaResponse::ok().with_json_body(&serde_json::json!({
         "domain": domain,
         "exists": exists
     }))?)
@@ -922,7 +922,7 @@ pub(crate) async fn verify_domain_ownership(
 pub(crate) async fn request_certificate(
     ctx: &ServerContext,
     app_state: AppState,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     #[derive(serde::Deserialize)]
     struct CertRequest {
         domain: String,
@@ -930,11 +930,11 @@ pub(crate) async fn request_certificate(
     }
 
     let cert_request: CertRequest = serde_json::from_slice(ctx.body())
-        .map_err(|_| GurtError::invalid_message("Invalid JSON"))?;
+        .map_err(|_| GinpaError::invalid_message("Invalid JSON"))?;
 
     let domain_parts: Vec<&str> = cert_request.domain.split('.').collect();
     if domain_parts.len() < 2 {
-        return Ok(GurtResponse::bad_request().with_string_body("Invalid domain format"));
+        return Ok(GinpaResponse::bad_request().with_string_body("Invalid domain format"));
     }
 
     let name = domain_parts[0];
@@ -947,10 +947,10 @@ pub(crate) async fn request_certificate(
     .bind(tld)
     .fetch_optional(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     if domain_record.is_none() {
-        return Ok(GurtResponse::bad_request()
+        return Ok(GinpaResponse::bad_request()
             .with_string_body("Domain does not exist or is not approved"));
     }
 
@@ -968,7 +968,7 @@ pub(crate) async fn request_certificate(
     .bind(chrono::Utc::now() + chrono::Duration::hours(1))
     .execute(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Failed to store challenge"))?;
+    .map_err(|_| GinpaError::invalid_message("Failed to store challenge"))?;
 
     let challenge = serde_json::json!({
         "token": token,
@@ -977,16 +977,16 @@ pub(crate) async fn request_certificate(
         "verification_data": verification_data
     });
 
-    Ok(GurtResponse::ok().with_json_body(&challenge)?)
+    Ok(GinpaResponse::ok().with_json_body(&challenge)?)
 }
 
 pub(crate) async fn get_certificate(
     ctx: &ServerContext,
     app_state: AppState,
-) -> Result<GurtResponse> {
+) -> Result<GinpaResponse> {
     let path_parts: Vec<&str> = ctx.path().split('/').collect();
     if path_parts.len() < 4 {
-        return Ok(GurtResponse::bad_request().with_string_body("Invalid path format"));
+        return Ok(GinpaResponse::bad_request().with_string_body("Invalid path format"));
     }
 
     let token = path_parts[3];
@@ -997,30 +997,30 @@ pub(crate) async fn get_certificate(
     .bind(token)
     .fetch_optional(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let (domain, _challenge_type, verification_data, csr_pem, expires_at) = match challenge {
         Some(c) => c,
-        None => return Ok(GurtResponse::not_found().with_string_body("Challenge not found")),
+        None => return Ok(GinpaResponse::not_found().with_string_body("Challenge not found")),
     };
 
     let csr_pem = match csr_pem {
         Some(csr) => csr,
         None => {
             return Ok(
-                GurtResponse::bad_request().with_string_body("CSR not found for this challenge")
+                GinpaResponse::bad_request().with_string_body("CSR not found for this challenge")
             )
         }
     };
 
     if chrono::Utc::now() > expires_at {
-        return Ok(GurtResponse::bad_request().with_string_body("Challenge expired"));
+        return Ok(GinpaResponse::bad_request().with_string_body("Challenge expired"));
     }
 
     let challenge_domain = format!("_gurtca-challenge.{}", domain);
     let domain_parts: Vec<&str> = challenge_domain.split('.').collect();
     if domain_parts.len() < 3 {
-        return Ok(GurtResponse::bad_request().with_string_body("Invalid domain format"));
+        return Ok(GinpaResponse::bad_request().with_string_body("Invalid domain format"));
     }
 
     let record_name = "_gurtca-challenge";
@@ -1034,13 +1034,13 @@ pub(crate) async fn get_certificate(
     .bind(tld)
     .fetch_optional(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     let domain_record = match domain_record {
         Some(d) => d,
         None => {
             return Ok(
-                GurtResponse::bad_request().with_string_body("Domain not found or not approved")
+                GinpaResponse::bad_request().with_string_body("Domain not found or not approved")
             )
         }
     };
@@ -1053,10 +1053,10 @@ pub(crate) async fn get_certificate(
     .bind(&verification_data)
     .fetch_all(&app_state.db)
     .await
-    .map_err(|_| GurtError::invalid_message("Database error"))?;
+    .map_err(|_| GinpaError::invalid_message("Database error"))?;
 
     if txt_records.is_empty() {
-        return Ok(GurtResponse::new(gurtlib::GurtStatusCode::Accepted)
+        return Ok(GinpaResponse::new(gurtlib::GurtStatusCode::Accepted)
             .with_string_body("Challenge not completed yet"));
     }
 
@@ -1064,7 +1064,7 @@ pub(crate) async fn get_certificate(
         .await
         .map_err(|e| {
             log::error!("Failed to get CA certificate: {}", e);
-            GurtError::invalid_message("CA certificate error")
+            GinpaError::invalid_message("CA certificate error")
         })?;
 
     let cert_pem = crate::crypto::sign_csr_with_ca(
@@ -1076,7 +1076,7 @@ pub(crate) async fn get_certificate(
     )
     .map_err(|e| {
         log::error!("Failed to sign certificate: {}", e);
-        GurtError::invalid_message("Certificate signing failed")
+        GinpaError::invalid_message("Certificate signing failed")
     })?;
 
     let certificate = serde_json::json!({
@@ -1090,9 +1090,9 @@ pub(crate) async fn get_certificate(
         .bind(token)
         .execute(&app_state.db)
         .await
-        .map_err(|_| GurtError::invalid_message("Failed to cleanup challenge"))?;
+        .map_err(|_| GinpaError::invalid_message("Failed to cleanup challenge"))?;
 
-    Ok(GurtResponse::ok().with_json_body(&certificate)?)
+    Ok(GinpaResponse::ok().with_json_body(&certificate)?)
 }
 
 pub(crate) async fn get_ca_certificate(
@@ -1103,10 +1103,10 @@ pub(crate) async fn get_ca_certificate(
         .await
         .map_err(|e| {
             log::error!("Failed to get CA certificate: {}", e);
-            GurtError::invalid_message("CA certificate error")
+            GinpaError::invalid_message("CA certificate error")
         })?;
 
-    Ok(GurtResponse::ok()
+    Ok(GinpaResponse::ok()
         .with_header("Content-Type", "application/x-pem-file")
         .with_header(
             "Content-Disposition",
@@ -1118,7 +1118,7 @@ pub(crate) async fn get_ca_certificate(
 fn generate_challenge_data(domain: &str, token: &str) -> Result<String> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|_| GurtError::invalid_message("System time error"))?
+        .map_err(|_| GinpaError::invalid_message("System time error"))?
         .as_nanos();
 
     let mut rng = OsRng;
