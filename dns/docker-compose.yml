@@ -3,12 +3,12 @@ services:
     build:
       context: ..
       dockerfile: dns/Dockerfile
-    container_name: gurted-dns-server
+    container_name: ginpa-dns-server
     network_mode: host
     environment:
       RUST_LOG: info
     volumes:
       - ./config.toml:/app/config/config.toml:ro
       - ./data:/app/data
-      - ./certs:/home/matt/gurted/dns/certs:ro
+      - ./certs:/home/matt/ginpa/dns/certs:ro
     restart: unless-stopped
