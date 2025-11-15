@@ -1,0 +1,108 @@
+# GINPA Protocol - TODO List
+
+## 🔴 HIGH PRIORITY (Security & Stability)
+
+### [ ] security-1: Remove hardcoded JWT secret
+**File**: `dns/src/config/mod.rs:36`
+**Action**: Replace hardcoded JWT secret with environment variable
+**Impact**: Critical security vulnerability
+
+### [ ] security-2: Replace unwrap() calls with proper error handling
+**Count**: 78 instances across codebase
+**Action**: Replace all `unwrap()` calls with `Result<T, E>` handling
+**Impact**: Prevent potential panics in production
+
+### [ ] security-3: Add comprehensive unit tests for DNS module
+**Current**: 0% test coverage
+**Action**: Add unit tests for all public functions in DNS module
+**Impact**: Ensure code reliability and prevent regressions
+
+### [ ] security-4: Implement input validation and sanitization
+**File**: `search-engine/src/` (multiple files)
+**Action**: Add input validation to prevent SQL injection attacks
+**Impact**: Critical security protection
+
+---
+
+## 🟡 MEDIUM PRIORITY (Performance & Maintainability)
+
+### [ ] logging-1: Standardize logging framework
+**Current**: Mixed `log` and `tracing` usage
+**Action**: Migrate all modules to use `tracing` consistently
+**Impact**: Unified logging and better debugging
+
+### [ ] duplication-1: Create shared workspace utilities crate
+**Issue**: Configuration and DB connection logic duplicated
+**Action**: Extract common patterns into shared crate
+**Impact**: Reduce code duplication and improve maintainability
+
+### [ ] performance-1: Implement Redis caching layer
+**Current**: No caching for frequently accessed data
+**Action**: Add Redis cache for DNS queries and search results
+**Impact**: Significant performance improvement
+
+### [ ] monitoring-1: Add OpenTelemetry metrics collection
+**Current**: No monitoring or metrics
+**Action**: Implement OpenTelemetry for distributed tracing and metrics
+**Impact**: Better observability and performance insights
+
+---
+
+## 🟢 LOW PRIORITY (Documentation & Tooling)
+
+### [ ] documentation-1: Add comprehensive rustdoc documentation
+**Current**: Missing API documentation
+**Action**: Add rustdoc comments for all public APIs
+**Impact**: Better developer experience and API understanding
+
+### [ ] cicd-1: Implement GitHub Actions CI/CD pipeline
+**Current**: No automated testing or deployment
+**Action**: Create GitHub Actions with automated testing and security scanning
+**Impact**: Automated quality checks and deployment
+
+### [ ] config-1: Standardize configuration format
+**Current**: Inconsistent configuration between modules
+**Action**: Standardize on TOML with validation across all modules
+**Impact**: Consistent configuration management
+
+### [ ] deployment-1: Create Kubernetes manifests and deployment playbooks
+**Current**: Manual deployment process
+**Action**: Create K8s manifests and deployment documentation
+**Impact**: Automated and reproducible deployments
+
+---
+
+## 📋 IMPLEMENTATION NOTES
+
+### Dependencies
+- Some tasks depend on others (e.g., shared utilities before standardization)
+- Security tasks should be completed first
+- Testing should be implemented alongside new features
+
+### Estimated Timeline
+- **High Priority**: 2-3 weeks
+- **Medium Priority**: 4-6 weeks  
+- **Low Priority**: 6-8 weeks
+
+### Success Metrics
+- Zero hardcoded secrets
+- 80%+ test coverage
+- Unified logging across all modules
+- Automated CI/CD pipeline
+- Production-ready monitoring
+
+---
+
+## 🚀 QUICK START
+
+To begin addressing these issues:
+
+1. **Start with security-1**: Remove the hardcoded JWT secret
+2. **Run tests**: `cargo test` to identify failing areas
+3. **Check unwrap() usage**: `rg "unwrap\(\)" --type rust` to find all instances
+4. **Review logging**: `rg "log::" --type rust` to find log crate usage
+
+---
+
+*Last updated: $(date +%Y-%m-%d)*
+*Generated for GINPA Protocol improvement roadmap*
